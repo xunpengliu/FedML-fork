@@ -26,8 +26,9 @@ JNIEXPORT jlong JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManag
 JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManager_release
         (JNIEnv *env, jobject, jlong ptr) {
     LOGD("NativeFedMLClientManager<%lx>.release", ptr);
-    jobject globalCallback = globalCallbackMap[ptr];
-    if (globalCallback != nullptr) {
+    auto find = globalCallbackMap.find(ptr);
+    if (find != globalCallbackMap.end()) {
+        jobject globalCallback = find->second;
         globalCallbackMap.erase(ptr);
         env->DeleteGlobalRef(globalCallback);
     }
