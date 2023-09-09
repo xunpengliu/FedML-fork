@@ -2,11 +2,13 @@
 #define FEDML_ANDROID_JNIFEDMLCLIENTMANAGER_CPP
 
 #include <map>
+#include <mutex>
 #include "JniFedMLClientManager.h"
 #include "jniAssist.h"
 #include "FedMLClientManager.h"
 
 std::map<jlong, jobject> globalCallbackMap;
+std::mutex globalCallbackMapMutex;
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,12 +28,14 @@ JNIEXPORT jlong JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManag
 JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManager_release
         (JNIEnv *env, jobject, jlong ptr) {
     LOGD("NativeFedMLClientManager<%lx>.release", ptr);
+    std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
     auto find = globalCallbackMap.find(ptr);
     if (find != globalCallbackMap.end()) {
         jobject globalCallback = find->second;
         globalCallbackMap.erase(ptr);
         env->DeleteGlobalRef(globalCallback);
     }
+    lock.unlock();
     auto *pFedMLClientManager = reinterpret_cast<FedMLClientManager *>(ptr);
     delete pFedMLClientManager;
 }
@@ -56,7 +60,9 @@ JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManage
          batchSizeNum, learningRate, epochNum);
     // callback function
     jobject globalCallback = env->NewGlobalRef(trainingCallback);
+    std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
     globalCallbackMap[ptr] = globalCallback;
+    lock.unlock();
     jmethodID onProgressMethodID = getMethodIdByNameAndSig(env, trainingCallback, "onProgress","(F)V");
     jmethodID onAccuracyMethodID = getMethodIdByNameAndSig(env, trainingCallback, "onAccuracy","(IF)V");
     jmethodID onLossMethodID = getMethodIdByNameAndSig(env, trainingCallback, "onLoss", "(IF)V");
@@ -64,21 +70,27 @@ JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManage
          onProgressMethodID, onLossMethodID, onAccuracyMethodID);
 
     auto onProgressCallback = [ptr, env, onProgressMethodID](float progress) {
+        std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
         jobject callback = globalCallbackMap[ptr];
+        lock.unlock();
         LOGD("NativeFedMLClientManager<%lx> <%p>.onProgressCallback(%f) env=%p onProgressMid=%p", ptr,
              callback, progress, env, onProgressMethodID);
         env->CallVoidMethod(callback, onProgressMethodID, (jfloat) progress);
     };
 
     auto onAccuracyCallback = [ptr, env, onAccuracyMethodID](int epoch, float acc) {
+        std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
         jobject callback = globalCallbackMap[ptr];
+        lock.unlock();
         LOGD("NativeFedMLClientManager<%lx> <%p>.onAccuracyCallback(%d, %f) env=%p onAccuracyMid=%p", ptr,
              callback, epoch, acc, env, onAccuracyMethodID);
         env->CallVoidMethod(callback, onAccuracyMethodID, (jint) epoch, (jfloat) acc);
     };
 
     auto onLossCallback = [ptr, env, onLossMethodID](int epoch, float loss) {
+        std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
         jobject callback = globalCallbackMap[ptr];
+        lock.unlock();
         LOGD("NativeFedMLClientManager<%lx> <%p>.onLossCallback(%d, %f) env=%p onLossMid=%p", ptr,
              callback, epoch, loss, env, onLossMethodID);
         env->CallVoidMethod(callback, onLossMethodID, (jint) epoch, (jfloat) loss);
