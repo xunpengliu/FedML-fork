@@ -7,7 +7,9 @@
 #include "jniAssist.h"
 #include "FedMLClientManager.h"
 
+// java callback object ref map
 std::map<jlong, jobject> globalCallbackMap;
+// globalCallbackMap lock
 std::mutex globalCallbackMapMutex;
 
 #ifdef __cplusplus
@@ -28,13 +30,17 @@ JNIEXPORT jlong JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManag
 JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManager_release
         (JNIEnv *env, jobject, jlong ptr) {
     LOGD("NativeFedMLClientManager<%lx>.release", ptr);
+    // add lock, protect globalCallbackMap concurrent access
     std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
+    // check callback ref exists
     auto find = globalCallbackMap.find(ptr);
     if (find != globalCallbackMap.end()) {
+        // release callback ref
         jobject globalCallback = find->second;
         globalCallbackMap.erase(ptr);
         env->DeleteGlobalRef(globalCallback);
     }
+    // unlock
     lock.unlock();
     auto *pFedMLClientManager = reinterpret_cast<FedMLClientManager *>(ptr);
     delete pFedMLClientManager;
@@ -60,8 +66,10 @@ JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManage
          batchSizeNum, learningRate, epochNum);
     // callback function
     jobject globalCallback = env->NewGlobalRef(trainingCallback);
+    // add lock, protect globalCallbackMap concurrent access
     std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
     globalCallbackMap[ptr] = globalCallback;
+    // unlock
     lock.unlock();
     jmethodID onProgressMethodID = getMethodIdByNameAndSig(env, trainingCallback, "onProgress","(F)V");
     jmethodID onAccuracyMethodID = getMethodIdByNameAndSig(env, trainingCallback, "onAccuracy","(IF)V");
@@ -70,8 +78,10 @@ JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManage
          onProgressMethodID, onLossMethodID, onAccuracyMethodID);
 
     auto onProgressCallback = [ptr, env, onProgressMethodID](float progress) {
+        // add lock, protect globalCallbackMap concurrent access
         std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
         jobject callback = globalCallbackMap[ptr];
+        // unlock
         lock.unlock();
         LOGD("NativeFedMLClientManager<%lx> <%p>.onProgressCallback(%f) env=%p onProgressMid=%p", ptr,
              callback, progress, env, onProgressMethodID);
@@ -79,8 +89,10 @@ JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManage
     };
 
     auto onAccuracyCallback = [ptr, env, onAccuracyMethodID](int epoch, float acc) {
+        // add lock, protect globalCallbackMap concurrent access
         std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
         jobject callback = globalCallbackMap[ptr];
+        // unlock
         lock.unlock();
         LOGD("NativeFedMLClientManager<%lx> <%p>.onAccuracyCallback(%d, %f) env=%p onAccuracyMid=%p", ptr,
              callback, epoch, acc, env, onAccuracyMethodID);
@@ -88,8 +100,10 @@ JNIEXPORT void JNICALL Java_ai_fedml_edge_nativemobilenn_NativeFedMLClientManage
     };
 
     auto onLossCallback = [ptr, env, onLossMethodID](int epoch, float loss) {
+        // add lock, protect globalCallbackMap concurrent access
         std::unique_lock<std::mutex> lock(globalCallbackMapMutex);
         jobject callback = globalCallbackMap[ptr];
+        // unlock
         lock.unlock();
         LOGD("NativeFedMLClientManager<%lx> <%p>.onLossCallback(%d, %f) env=%p onLossMid=%p", ptr,
              callback, epoch, loss, env, onLossMethodID);
